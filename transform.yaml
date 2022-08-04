@@ -1,0 +1,8 @@
+transforms:
+- from:
+  - example.org
+  - example.net
+  to: mutated.example.org
+- from:
+  - example.com
+  to: mutated.example.dev
