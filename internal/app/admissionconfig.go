@@ -10,6 +10,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	utilpointer "k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
+
+	"github.com/mikelorant/muting2/internal/format"
 )
 
 type AdmissionConfig struct {
@@ -132,4 +134,12 @@ func admissionConfig(o AdmissionConfigOptions) *admissionregistrationv1.Mutating
 		ObjectMeta: objectMeta,
 		Webhooks:   webhooks,
 	}
+}
+
+func (o AdmissionConfigOptions) String() string {
+	return format.SliceToFormattedLines([]string{
+		fmt.Sprintf("Namespace: %v", o.Namespace),
+		fmt.Sprintf("Name: %v", o.Name),
+		fmt.Sprintf("Service: %v", o.Service),
+	})
 }

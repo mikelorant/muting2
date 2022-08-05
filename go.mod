@@ -3,6 +3,7 @@ module github.com/mikelorant/muting2
 go 1.18
 
 require (
+	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
 	github.com/go-chi/chi/v5 v5.0.7
 	github.com/ivanpirog/coloredcobra v1.0.1
 	github.com/prometheus/client_golang v1.12.2

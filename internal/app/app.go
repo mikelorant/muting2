@@ -3,7 +3,9 @@ package app
 import (
 	"fmt"
 	"log"
+	"os"
 
+	"github.com/common-nighthawk/go-figure"
 	"github.com/mikelorant/muting2/internal/tls"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -14,6 +16,7 @@ type App struct {
 	Transforms *Transforms
 	TLS        *tls.TLS
 	Registry   *prometheus.Registry
+	Log        *log.Logger
 }
 
 type Options struct {
@@ -28,10 +31,12 @@ func New(o Options) error {
 	a := App{
 		Options:  o,
 		Registry: prometheus.NewRegistry(),
+		Log:      log.New(os.Stdout, "", 0),
 	}
 
-	a.Registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
-	a.Registry.MustRegister(collectors.NewGoCollector())
+	figure.NewFigure("Muting", "", true).Print()
+
+	a.RegisterCollectors()
 
 	if err := a.GetTransformer(); err != nil {
 		return fmt.Errorf("unable to do transformer: %w", err)
@@ -59,7 +64,9 @@ func (a *App) GetTransformer() error {
 	}
 	a.Transforms = t
 
-	log.Println(t)
+	fmt.Println("Transforms:")
+	fmt.Println(t)
+	fmt.Println()
 
 	return nil
 }
@@ -82,6 +89,10 @@ func (a *App) GetTLS() error {
 
 	a.TLS = t
 
+	fmt.Println("TLS Options:")
+	fmt.Println(t.Options)
+	fmt.Println()
+
 	return nil
 }
 
@@ -93,9 +104,15 @@ func (a *App) ApplyAdmissionConfig() error {
 		CABundle:  a.TLS.CA.GetCertificate(),
 	})
 
+	fmt.Println("Admission Config Options:")
+	fmt.Println(ac.Options)
+	fmt.Println()
+
 	if err := ac.Apply(); err != nil {
 		return fmt.Errorf("unable to apply webhook: %w", err)
 	}
+
+	a.Log.Println("Applied admission config.")
 
 	return nil
 }
@@ -113,9 +130,16 @@ func (a *App) StartServer() error {
 		Keypair: a.TLS.Keypair,
 	}
 
+	a.Log.Printf("Starting server [%v].\n", a.Options.Bind)
+
 	if err := NewServer(opts); err != nil {
 		return fmt.Errorf("unable to start server: %w", err)
 	}
 
 	return nil
+}
+
+func (a *App) RegisterCollectors() {
+	a.Registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	a.Registry.MustRegister(collectors.NewGoCollector())
 }

@@ -32,7 +32,7 @@ type KeypairStore struct {
 }
 
 func NewKeypair(o KeypairOptions) (*Keypair, error) {
-	key, err := rsa.GenerateKey(cryptorand.Reader, 4096)
+	key, err := rsa.GenerateKey(cryptorand.Reader, 1024)
 	if err != nil {
 		return nil, fmt.Errorf("unable to generate key: %w", err)
 	}
