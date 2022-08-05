@@ -5,12 +5,15 @@ import (
 	"log"
 
 	"github.com/mikelorant/muting2/internal/tls"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
 type App struct {
 	Options    Options
 	Transforms *Transforms
 	TLS        *tls.TLS
+	Registry   *prometheus.Registry
 }
 
 type Options struct {
@@ -23,8 +26,12 @@ type Options struct {
 
 func New(o Options) error {
 	a := App{
-		Options: o,
+		Options:  o,
+		Registry: prometheus.NewRegistry(),
 	}
+
+	a.Registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	a.Registry.MustRegister(collectors.NewGoCollector())
 
 	if err := a.GetTransformer(); err != nil {
 		return fmt.Errorf("unable to do transformer: %w", err)
@@ -94,7 +101,7 @@ func (a *App) ApplyAdmissionConfig() error {
 }
 
 func (a *App) StartServer() error {
-	wh, err := NewWebhook(a.Transforms)
+	wh, err := NewWebhook(a.Transforms, a.Registry)
 	if err != nil {
 		return fmt.Errorf("unable to get handler: %w", err)
 	}
@@ -102,6 +109,7 @@ func (a *App) StartServer() error {
 	opts := ServerOptions{
 		Addr:    a.Options.Bind,
 		Webhook: wh,
+		Metrics: a.Registry,
 		Keypair: a.TLS.Keypair,
 	}
 

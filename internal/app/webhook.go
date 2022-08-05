@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/prometheus/client_golang/prometheus"
 	kwhhttp "github.com/slok/kubewebhook/v2/pkg/http"
+	kwhprometheus "github.com/slok/kubewebhook/v2/pkg/metrics/prometheus"
 	kwhmodel "github.com/slok/kubewebhook/v2/pkg/model"
 	"github.com/slok/kubewebhook/v2/pkg/webhook"
+	kwhwebhook "github.com/slok/kubewebhook/v2/pkg/webhook"
 	kwhmutating "github.com/slok/kubewebhook/v2/pkg/webhook/mutating"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,7 +24,7 @@ type Webhook struct {
 	Webhook webhook.Webhook
 }
 
-func NewWebhook(t Transformer) (*Webhook, error) {
+func NewWebhook(t Transformer, r prometheus.Registerer) (*Webhook, error) {
 	whcfg := kwhmutating.WebhookConfig{
 		ID:      "muting",
 		Obj:     &networkingv1.Ingress{},
@@ -33,15 +36,18 @@ func NewWebhook(t Transformer) (*Webhook, error) {
 		return nil, fmt.Errorf("unable to create webhook: %w", err)
 	}
 
+	rec, err := kwhprometheus.NewRecorder(kwhprometheus.RecorderConfig{Registry: r})
+	if err != nil {
+		return nil, fmt.Errorf("unable to create recorder: %w", err)
+	}
+
 	return &Webhook{
-		Webhook: wh,
+		Webhook: kwhwebhook.NewMeasuredWebhook(rec, wh),
 	}, nil
 }
 
 func (w *Webhook) Handler() http.Handler {
-	whhcfg := kwhhttp.HandlerConfig{Webhook: w.Webhook}
-
-	return kwhhttp.MustHandlerFor(whhcfg)
+	return kwhhttp.MustHandlerFor(kwhhttp.HandlerConfig{Webhook: w.Webhook})
 }
 
 func mutatorFunc(t Transformer) func(ctx context.Context, ar *kwhmodel.AdmissionReview, obj metav1.Object) (*kwhmutating.MutatorResult, error) {

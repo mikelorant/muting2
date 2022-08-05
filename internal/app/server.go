@@ -6,14 +6,20 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hellofresh/health-go/v4"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/mikelorant/muting2/internal/tls"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Handler interface {
 	Handler() http.Handler
+}
+
+type Metrics interface {
+	prometheus.Registerer
+	prometheus.Gatherer
 }
 
 type Server struct {
@@ -24,6 +30,7 @@ type ServerOptions struct {
 	Keypair *tls.Keypair
 	Addr    string
 	Webhook Handler
+	Metrics Metrics
 }
 
 func NewServer(o ServerOptions) error {
@@ -49,24 +56,26 @@ func (s *Server) StartWithTLSKeypair(cert, key []byte) error {
 	srv := &http.Server{
 		Addr:         s.Options.Addr,
 		TLSConfig:    tlscfg,
+		Handler:      getRouter(s.Options.Webhook, s.Options.Metrics),
 		ReadTimeout:  time.Minute,
 		WriteTimeout: time.Minute,
 	}
 
-	hlth, err := health.New()
-	if err != nil {
-		return fmt.Errorf("unable to init health component: %w", err)
-	}
-
-	e := echo.New()
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-	e.Any("/*", echo.WrapHandler(s.Options.Webhook.Handler()))
-	e.GET("/status", echo.WrapHandler(hlth.Handler()))
-
-	if err := e.StartServer(srv); err != nil {
+	if err := srv.ListenAndServeTLS("", ""); err != nil {
 		return fmt.Errorf("unable to start server: %w", err)
 	}
 
 	return nil
+}
+
+func getRouter(h Handler, m Metrics) *chi.Mux {
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Heartbeat("/status"))
+	r.Mount("/debug", middleware.Profiler())
+	r.Handle("/", h.Handler())
+	r.Handle("/metrics", promhttp.InstrumentMetricHandler(m, promhttp.HandlerFor(m, promhttp.HandlerOpts{})))
+
+	return r
 }
