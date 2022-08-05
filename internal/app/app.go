@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/mikelorant/muting2/internal/tls"
 )
@@ -25,36 +26,40 @@ func New(o Options) error {
 		Options: o,
 	}
 
-	if err := a.DoTransformer(); err != nil {
+	if err := a.GetTransformer(); err != nil {
 		return fmt.Errorf("unable to do transformer: %w", err)
 	}
 
-	if err := a.DoTLS(); err != nil {
+	if err := a.GetTLS(); err != nil {
 		return fmt.Errorf("unable to do TLS: %w", err)
 	}
 
-	if err := a.DoWebhookConfig(); err != nil {
+	if err := a.ApplyWebhookConfig(); err != nil {
 		return fmt.Errorf("unable to do webhook: %w", err)
 	}
 
-	if err := a.DoServer(); err != nil {
+	if err := a.StartServer(); err != nil {
 		return fmt.Errorf("unable to do server: %w", err)
 	}
 
 	return nil
 }
 
-func (a *App) DoTransformer() error {
+func (a *App) GetTransformer() error {
 	t, err := NewTransformer(a.Options.Config)
 	if err != nil {
 		return fmt.Errorf("unable to do transformer: %w", err)
 	}
 	a.Transforms = t
 
+	for _, v := range t.Transforms {
+		log.Println(v)
+	}
+
 	return nil
 }
 
-func (a *App) DoTLS() error {
+func (a *App) GetTLS() error {
 	cn := fmt.Sprintf("%v.%v.svc", a.Options.Service, a.Options.Namespace)
 	dn := []string{
 		a.Options.Service,
@@ -75,12 +80,12 @@ func (a *App) DoTLS() error {
 	return nil
 }
 
-func (a *App) DoWebhookConfig() error {
-	wh := NewWebhookConfig(WebhookOptions{
+func (a *App) ApplyWebhookConfig() error {
+	wh := NewWebhookConfig(WebhookConfigOptions{
 		Name:      a.Options.Name,
 		Namespace: a.Options.Namespace,
 		Service:   a.Options.Service,
-		CABundle:  a.TLS.CA.Get("certificate"),
+		CABundle:  a.TLS.CA.GetCertificate(),
 	})
 
 	if err := wh.Apply(); err != nil {
@@ -90,17 +95,19 @@ func (a *App) DoWebhookConfig() error {
 	return nil
 }
 
-func (a *App) DoServer() error {
-	h, err := NewWebhookHandler(a.Transforms)
+func (a *App) StartServer() error {
+	webhook, err := NewWebhook(a.Transforms)
 	if err != nil {
 		return fmt.Errorf("unable to get handler: %w", err)
 	}
 
-	if err := NewServer(ServerOptions{
+	opts := ServerOptions{
 		Addr:    a.Options.Bind,
-		Handler: h,
+		Webhook: webhook,
 		Keypair: a.TLS.Keypair,
-	}); err != nil {
+	}
+
+	if err := NewServer(opts); err != nil {
 		return fmt.Errorf("unable to start server: %w", err)
 	}
 

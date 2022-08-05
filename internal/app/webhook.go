@@ -12,13 +12,18 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 
 	kwhhttp "github.com/slok/kubewebhook/v2/pkg/http"
+	"github.com/slok/kubewebhook/v2/pkg/webhook"
 )
 
 type Transformer interface {
 	Transform(string) string
 }
 
-func NewWebhookHandler(t Transformer) (http.Handler, error) {
+type Webhook struct {
+	Webhook webhook.Webhook
+}
+
+func NewWebhook(t Transformer) (*Webhook, error) {
 	whcfg := kwhmutating.WebhookConfig{
 		ID:      "muting",
 		Obj:     &networkingv1.Ingress{},
@@ -30,13 +35,15 @@ func NewWebhookHandler(t Transformer) (http.Handler, error) {
 		return nil, fmt.Errorf("unable to create webhook: %w", err)
 	}
 
-	whhcfg := kwhhttp.HandlerConfig{Webhook: wh}
-	whh, err := kwhhttp.HandlerFor(whhcfg)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create webhook handler: %w", err)
-	}
+	return &Webhook{
+		Webhook: wh,
+	}, nil
+}
 
-	return whh, nil
+func (w *Webhook) Handler() http.Handler {
+	whhcfg := kwhhttp.HandlerConfig{Webhook: w.Webhook}
+
+	return kwhhttp.MustHandlerFor(whhcfg)
 }
 
 func mutatorFunc(t Transformer) func(ctx context.Context, ar *kwhmodel.AdmissionReview, obj metav1.Object) (*kwhmutating.MutatorResult, error) {

@@ -12,26 +12,26 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-type Webhook struct {
+type WebhookConfig struct {
 	Config  *admissionregistrationv1.MutatingWebhookConfiguration
-	Options WebhookOptions
+	Options WebhookConfigOptions
 }
 
-type WebhookOptions struct {
+type WebhookConfigOptions struct {
 	Namespace string
 	Name      string
 	Service   string
 	CABundle  []byte
 }
 
-func NewWebhookConfig(o WebhookOptions) Webhook {
-	return Webhook{
+func NewWebhookConfig(o WebhookConfigOptions) WebhookConfig {
+	return WebhookConfig{
 		Config:  webhookConfig(o),
 		Options: o,
 	}
 }
 
-func (w *Webhook) Apply() error {
+func (w *WebhookConfig) Apply() error {
 	cl, err := newClient()
 	if err != nil {
 		return fmt.Errorf("unable to create new client: %w", err)
@@ -74,7 +74,7 @@ func newClient() (*kubernetes.Clientset, error) {
 	return cl, nil
 }
 
-func webhookConfig(o WebhookOptions) *admissionregistrationv1.MutatingWebhookConfiguration {
+func webhookConfig(o WebhookConfigOptions) *admissionregistrationv1.MutatingWebhookConfiguration {
 	name := fmt.Sprintf("%v.%v.svc.cluster.local", o.Service, o.Namespace)
 	fail := admissionregistrationv1.Fail
 	sideEffect := admissionregistrationv1.SideEffectClassNone

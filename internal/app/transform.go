@@ -19,25 +19,12 @@ type Transform struct {
 }
 
 func NewTransformer(f string) (*Transforms, error) {
-	var t Transforms
-	if err := t.load(f); err != nil {
+	var ts Transforms
+	if err := load(f, &ts); err != nil {
 		return nil, fmt.Errorf("unable to load transforms: %w", err)
 	}
 
-	return &t, nil
-}
-
-func (ts *Transforms) load(f string) error {
-	file, err := os.Open(f)
-	if err != nil {
-		return fmt.Errorf("unable to read transform file: %v: %w", f, err)
-	}
-
-	if err := yaml.NewDecoder(file).Decode(&ts); err != nil {
-		return fmt.Errorf("unable to decode transform file: %v: %w", f, err)
-	}
-
-	return nil
+	return &ts, nil
 }
 
 func (ts *Transforms) Transform(str string) string {
@@ -59,6 +46,19 @@ func (ts *Transforms) Transform(str string) string {
 	return str
 }
 
-func (r Transform) String() string {
-	return fmt.Sprintf("Transform: From: %v To: %v\n", strings.Join(r.From, ", "), r.To)
+func (t Transform) String() string {
+	return fmt.Sprintf("Transform: From: %v To: %v", strings.Join(t.From, ", "), t.To)
+}
+
+func load(f string, v interface{}) error {
+	file, err := os.Open(f)
+	if err != nil {
+		return fmt.Errorf("unable to read transform file: %v: %w", f, err)
+	}
+
+	if err := yaml.NewDecoder(file).Decode(v); err != nil {
+		return fmt.Errorf("unable to decode transform file: %v: %w", f, err)
+	}
+
+	return nil
 }

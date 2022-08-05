@@ -32,13 +32,10 @@ func (p *PEMs) WriteAll(dir string) error {
 	return nil
 }
 
-func (p *PEMs) Get(t string) []byte {
-	switch t {
-	case "key":
-		return p.PEMStores["key"].Data
-	case "certificate":
-		return p.PEMStores["certificate"].Data
-	default:
-		return nil
-	}
+func (p *PEMs) GetKey() []byte {
+	return p.PEMStores["key"].Data
+}
+
+func (p *PEMs) GetCertificate() []byte {
+	return p.PEMStores["certificate"].Data
 }
