@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	cc "github.com/ivanpirog/coloredcobra"
 	"github.com/mikelorant/muting2/internal/app"
 	"github.com/spf13/cobra"
 )
@@ -43,6 +44,17 @@ func NewRootCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&name, "name", "r", "muting", "Resource name")
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Resource namespace")
 	cmd.Flags().StringVarP(&service, "service", "s", "muting", "Resource service")
+
+	cc.Init(&cc.Config{
+		RootCmd:         cmd,
+		Headings:        cc.HiGreen + cc.Bold,
+		Commands:        cc.HiYellow + cc.Bold,
+		Example:         cc.Italic,
+		ExecName:        cc.Bold,
+		Flags:           cc.Bold,
+		NoExtraNewlines: true,
+		NoBottomNewline: true,
+	})
 
 	return cmd
 }

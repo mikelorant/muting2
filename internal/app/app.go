@@ -52,9 +52,7 @@ func (a *App) GetTransformer() error {
 	}
 	a.Transforms = t
 
-	for _, v := range t.Transforms {
-		log.Println(v)
-	}
+	log.Println(t)
 
 	return nil
 }

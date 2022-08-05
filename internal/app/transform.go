@@ -46,7 +46,21 @@ func (ts *Transforms) Transform(str string) string {
 }
 
 func (t Transform) String() string {
-	return fmt.Sprintf("Transform: From: %v To: %v", strings.Join(t.From, ", "), t.To)
+	return fmt.Sprintf("From: %v To: %v", strings.Join(t.From, ", "), t.To)
+}
+
+func (ts Transforms) String() string {
+	var sb strings.Builder
+
+	fmt.Fprintln(&sb, "Transforms:")
+
+	var strs []string
+	for _, t := range ts.Transforms {
+		strs = append(strs, fmt.Sprint(t))
+	}
+	fmt.Fprint(&sb, strings.Join(strs, "\n"))
+
+	return sb.String()
 }
 
 func load(f string, v interface{}) error {
