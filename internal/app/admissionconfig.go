@@ -12,26 +12,26 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-type WebhookConfig struct {
+type AdmissionConfig struct {
 	Config  *admissionregistrationv1.MutatingWebhookConfiguration
-	Options WebhookConfigOptions
+	Options AdmissionConfigOptions
 }
 
-type WebhookConfigOptions struct {
+type AdmissionConfigOptions struct {
 	Namespace string
 	Name      string
 	Service   string
 	CABundle  []byte
 }
 
-func NewWebhookConfig(o WebhookConfigOptions) WebhookConfig {
-	return WebhookConfig{
-		Config:  webhookConfig(o),
+func NewAdmissionConfig(o AdmissionConfigOptions) AdmissionConfig {
+	return AdmissionConfig{
+		Config:  admissionConfig(o),
 		Options: o,
 	}
 }
 
-func (w *WebhookConfig) Apply() error {
+func (w *AdmissionConfig) Apply() error {
 	cl, err := newClient()
 	if err != nil {
 		return fmt.Errorf("unable to create new client: %w", err)
@@ -42,19 +42,19 @@ func (w *WebhookConfig) Apply() error {
 
 	obj, err := mcl.Get(ctx, w.Options.Name, metav1.GetOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("unable to get webhook: %w", err)
+		return fmt.Errorf("unable to get admission config: %w", err)
 	}
 
 	if apierrors.IsNotFound(err) {
 		if _, err := mcl.Create(ctx, w.Config, metav1.CreateOptions{}); err != nil {
-			return fmt.Errorf("unable to create webhook: %w", err)
+			return fmt.Errorf("unable to create admission config: %w", err)
 		}
 		return nil
 	}
 
 	w.Config.ObjectMeta.ResourceVersion = obj.ObjectMeta.ResourceVersion
 	if _, err := mcl.Update(ctx, w.Config, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("unable to update webhook: %w", err)
+		return fmt.Errorf("unable to update admission config: %w", err)
 	}
 
 	return nil
@@ -74,7 +74,7 @@ func newClient() (*kubernetes.Clientset, error) {
 	return cl, nil
 }
 
-func webhookConfig(o WebhookConfigOptions) *admissionregistrationv1.MutatingWebhookConfiguration {
+func admissionConfig(o AdmissionConfigOptions) *admissionregistrationv1.MutatingWebhookConfiguration {
 	name := fmt.Sprintf("%v.%v.svc.cluster.local", o.Service, o.Namespace)
 	fail := admissionregistrationv1.Fail
 	sideEffect := admissionregistrationv1.SideEffectClassNone

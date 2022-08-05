@@ -28,18 +28,17 @@ func NewTransformer(f string) (*Transforms, error) {
 }
 
 func (ts *Transforms) Transform(str string) string {
-	for _, r := range ts.Transforms {
-		for _, suffix := range r.From {
+	for _, t := range ts.Transforms {
+		for _, suffix := range t.From {
 			if !strings.HasSuffix(str, suffix) {
 				continue
 			}
 
 			from := fmt.Sprintf(".%v$", suffix)
-			to := fmt.Sprintf("$1.%v", r.To)
+			to := fmt.Sprintf("$1.%v", t.To)
 
 			re := regexp.MustCompile(from)
-			result := re.ReplaceAllString(str, to)
-			return result
+			return re.ReplaceAllString(str, to)
 		}
 	}
 
@@ -51,12 +50,12 @@ func (t Transform) String() string {
 }
 
 func load(f string, v interface{}) error {
-	file, err := os.Open(f)
+	fh, err := os.Open(f)
 	if err != nil {
 		return fmt.Errorf("unable to read transform file: %v: %w", f, err)
 	}
 
-	if err := yaml.NewDecoder(file).Decode(v); err != nil {
+	if err := yaml.NewDecoder(fh).Decode(v); err != nil {
 		return fmt.Errorf("unable to decode transform file: %v: %w", f, err)
 	}
 

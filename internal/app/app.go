@@ -34,7 +34,7 @@ func New(o Options) error {
 		return fmt.Errorf("unable to do TLS: %w", err)
 	}
 
-	if err := a.ApplyWebhookConfig(); err != nil {
+	if err := a.ApplyAdmissionConfig(); err != nil {
 		return fmt.Errorf("unable to do webhook: %w", err)
 	}
 
@@ -80,15 +80,15 @@ func (a *App) GetTLS() error {
 	return nil
 }
 
-func (a *App) ApplyWebhookConfig() error {
-	wh := NewWebhookConfig(WebhookConfigOptions{
+func (a *App) ApplyAdmissionConfig() error {
+	ac := NewAdmissionConfig(AdmissionConfigOptions{
 		Name:      a.Options.Name,
 		Namespace: a.Options.Namespace,
 		Service:   a.Options.Service,
 		CABundle:  a.TLS.CA.GetCertificate(),
 	})
 
-	if err := wh.Apply(); err != nil {
+	if err := ac.Apply(); err != nil {
 		return fmt.Errorf("unable to apply webhook: %w", err)
 	}
 
@@ -96,14 +96,14 @@ func (a *App) ApplyWebhookConfig() error {
 }
 
 func (a *App) StartServer() error {
-	webhook, err := NewWebhook(a.Transforms)
+	wh, err := NewWebhook(a.Transforms)
 	if err != nil {
 		return fmt.Errorf("unable to get handler: %w", err)
 	}
 
 	opts := ServerOptions{
 		Addr:    a.Options.Bind,
-		Webhook: webhook,
+		Webhook: wh,
 		Keypair: a.TLS.Keypair,
 	}
 

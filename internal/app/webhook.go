@@ -5,14 +5,12 @@ import (
 	"fmt"
 	"net/http"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
+	kwhhttp "github.com/slok/kubewebhook/v2/pkg/http"
 	kwhmodel "github.com/slok/kubewebhook/v2/pkg/model"
+	"github.com/slok/kubewebhook/v2/pkg/webhook"
 	kwhmutating "github.com/slok/kubewebhook/v2/pkg/webhook/mutating"
 	networkingv1 "k8s.io/api/networking/v1"
-
-	kwhhttp "github.com/slok/kubewebhook/v2/pkg/http"
-	"github.com/slok/kubewebhook/v2/pkg/webhook"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type Transformer interface {
