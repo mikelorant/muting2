@@ -69,13 +69,16 @@ func (s *Server) StartWithTLSKeypair(cert, key []byte) error {
 }
 
 func getRouter(h Handler, m Metrics) *chi.Mux {
+	wh := h.Handler()
+	ph := promhttp.InstrumentMetricHandler(m, promhttp.HandlerFor(m, promhttp.HandlerOpts{}))
+
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Heartbeat("/status"))
 	r.Mount("/debug", middleware.Profiler())
-	r.Handle("/", h.Handler())
-	r.Handle("/metrics", promhttp.InstrumentMetricHandler(m, promhttp.HandlerFor(m, promhttp.HandlerOpts{})))
+	r.Handle("/", wh)
+	r.Handle("/metrics", ph)
 
 	return r
 }
