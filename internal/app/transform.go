@@ -3,18 +3,20 @@ package app
 import (
 	"context"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 
-	"github.com/mikelorant/muting2/internal/format"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"gopkg.in/yaml.v3"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
 type Transforms struct {
-	Transforms []Transform `yaml:"transforms"`
+	Client  corev1.ConfigMapsGetter
+	Options TransformOptions
 }
 
 type Transform struct {
@@ -22,23 +24,33 @@ type Transform struct {
 	To   string   `yaml:"to"`
 }
 
-func NewTransformer(ctx context.Context, f string) (*Transforms, error) {
-	ctx, span := otel.Tracer(name).Start(ctx, "NewTransformer")
-	defer span.End()
+type TransformOptions struct {
+	Namespace string
+	Name      string
+	Client    corev1.ConfigMapsGetter
+}
 
-	var ts Transforms
-	if err := load(ctx, f, &ts); err != nil {
-		return nil, fmt.Errorf("unable to load transforms: %w", err)
+func NewTransformer(o TransformOptions) (*Transforms, error) {
+	ts := Transforms{
+		Options: o,
+		Client:  o.Client,
 	}
 
 	return &ts, nil
 }
 
-func (ts *Transforms) Transform(ctx context.Context, str string) string {
-	_, span := otel.Tracer(name).Start(ctx, "Transform")
+func (ts *Transforms) Transform(ctx context.Context, str string) (string, error) {
+	ctx, span := otel.Tracer(name).Start(ctx, "Transform")
 	defer span.End()
 
-	for _, t := range ts.Transforms {
+	tt, err := ts.Read(ctx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return str, fmt.Errorf("unable to read config map: %w", err)
+	}
+
+	for _, t := range tt {
 		for _, suffix := range t.From {
 			if !strings.HasSuffix(str, suffix) {
 				continue
@@ -48,37 +60,42 @@ func (ts *Transforms) Transform(ctx context.Context, str string) string {
 			to := fmt.Sprintf("$1.%v", t.To)
 
 			re := regexp.MustCompile(from)
-			return re.ReplaceAllString(str, to)
+			return re.ReplaceAllString(str, to), nil
 		}
 	}
 
-	return str
+	return str, nil
 }
 
 func (t Transform) String() string {
 	return fmt.Sprintf("%v => %v", strings.Join(t.From, ", "), t.To)
 }
 
-func (ts Transforms) String() string {
-	return format.SliceToFormattedLines(ts.Transforms)
-}
-
-func load(ctx context.Context, f string, v interface{}) error {
-	_, span := otel.Tracer(name).Start(ctx, "load")
+func (ts *Transforms) Read(ctx context.Context) ([]Transform, error) {
+	ctx, span := otel.Tracer(name).Start(ctx, "read")
 	defer span.End()
 
-	fh, err := os.Open(f)
-	if err != nil {
+	var tt []Transform
+
+	cl := ts.Client.ConfigMaps(ts.Options.Namespace)
+
+	cm, err := cl.Get(ctx, ts.Options.Name, metav1.GetOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("unable to read transform file: %v: %w", f, err)
+		return tt, fmt.Errorf("unable to get config map: %v: %w", ts.Options.Name, err)
 	}
 
-	if err := yaml.NewDecoder(fh).Decode(v); err != nil {
+	data, ok := cm.Data["transforms"]
+	if !ok {
+		return tt, nil
+	}
+
+	if err := yaml.Unmarshal([]byte(data), &tt); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("unable to decode transform file: %v: %w", f, err)
+		return tt, fmt.Errorf("unable to unmarshal config map: %w", err)
 	}
 
-	return nil
+	return tt, nil
 }

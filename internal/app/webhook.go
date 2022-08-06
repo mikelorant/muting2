@@ -18,7 +18,7 @@ import (
 )
 
 type Transformer interface {
-	Transform(context.Context, string) string
+	Transform(context.Context, string) (string, error)
 }
 
 type Webhook struct {
@@ -65,7 +65,11 @@ func mutatorFunc(t Transformer) func(ctx context.Context, ar *kwhmodel.Admission
 		}
 
 		for idx, rule := range ing.Spec.Rules {
-			rule.Host = t.Transform(ctx, rule.Host)
+			host, err := t.Transform(ctx, rule.Host)
+			if err != nil {
+				return &kwhmutating.MutatorResult{}, fmt.Errorf("unable to transform host: %w", err)
+			}
+			rule.Host = host
 			ing.Spec.Rules[idx] = rule
 		}
 

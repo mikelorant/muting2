@@ -8,12 +8,15 @@ import (
 
 	"github.com/common-nighthawk/go-figure"
 	"github.com/hackebrot/turtle"
+	"github.com/mikelorant/muting2/internal/format"
 	"github.com/mikelorant/muting2/internal/tls"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
-
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/trace"
+	"k8s.io/client-go/kubernetes"
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 type App struct {
@@ -23,6 +26,7 @@ type App struct {
 	Registry        *prometheus.Registry
 	Log             *log.Logger
 	TracingProvider *trace.TracerProvider
+	Client          *kubernetes.Clientset
 }
 
 type Options struct {
@@ -59,12 +63,18 @@ func New(o Options) error {
 	ctx, span := otel.Tracer(name).Start(ctx, "New")
 	defer span.End()
 
-	if err := a.GetTransformer(ctx); err != nil {
-		return fmt.Errorf("unable to do transformer: %w", err)
-	}
-
 	if err := a.GetTLS(ctx); err != nil {
 		return fmt.Errorf("unable to do TLS: %w", err)
+	}
+
+	cl, err := newClient(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to get new client: %w", err)
+	}
+	a.Client = cl
+
+	if err := a.GetTransformer(ctx); err != nil {
+		return fmt.Errorf("unable to do transformer: %w", err)
 	}
 
 	if err := a.ApplyAdmissionConfig(ctx); err != nil {
@@ -97,14 +107,25 @@ func (a *App) GetTransformer(ctx context.Context) error {
 	ctx, span := otel.Tracer(name).Start(ctx, "GetTransformer")
 	defer span.End()
 
-	t, err := NewTransformer(ctx, a.Options.Config)
+	t, err := NewTransformer(TransformOptions{
+		Namespace: a.Options.Namespace,
+		Name:      a.Options.Name,
+		Client:    a.Client.CoreV1(),
+	})
 	if err != nil {
-		return fmt.Errorf("unable to do transformer: %w", err)
+		return fmt.Errorf("unable to create transformer: %w", err)
 	}
 	a.Transforms = t
 
+	ts, err := t.Read(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to read transforms: %w", err)
+	}
+
 	fmt.Println(turtle.Emojis["scissors"], " Transforms:")
-	fmt.Println(t)
+	if len(ts) != 0 {
+		fmt.Println(format.SliceToFormattedLines(ts))
+	}
 	fmt.Println()
 
 	return nil
@@ -143,6 +164,7 @@ func (a *App) ApplyAdmissionConfig(ctx context.Context) error {
 	defer span.End()
 
 	ac := NewAdmissionConfig(AdmissionConfigOptions{
+		Client:    a.Client.AdmissionregistrationV1(),
 		Name:      a.Options.Name,
 		Namespace: a.Options.Namespace,
 		Service:   a.Options.Service,
@@ -190,4 +212,25 @@ func (a *App) StartServer(ctx context.Context) error {
 func (a *App) RegisterCollectors() {
 	a.Registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	a.Registry.MustRegister(collectors.NewGoCollector())
+}
+
+func newClient(ctx context.Context) (*kubernetes.Clientset, error) {
+	_, span := otel.Tracer(name).Start(ctx, "newClient")
+	defer span.End()
+
+	cfg, err := ctrl.GetConfig()
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, fmt.Errorf("unable to get config: %w", err)
+	}
+
+	cl, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, fmt.Errorf("unable to create a new client: %w", err)
+	}
+
+	return cl, nil
 }

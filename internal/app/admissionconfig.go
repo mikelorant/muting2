@@ -4,19 +4,18 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/mikelorant/muting2/internal/format"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	admissionregistrationv1typed "k8s.io/client-go/kubernetes/typed/admissionregistration/v1"
 	utilpointer "k8s.io/utils/pointer"
-	ctrl "sigs.k8s.io/controller-runtime"
-
-	"github.com/mikelorant/muting2/internal/format"
 )
 
 type AdmissionConfig struct {
+	Client  admissionregistrationv1typed.MutatingWebhookConfigurationsGetter
 	Config  *admissionregistrationv1.MutatingWebhookConfiguration
 	Options AdmissionConfigOptions
 }
@@ -26,10 +25,12 @@ type AdmissionConfigOptions struct {
 	Name      string
 	Service   string
 	CABundle  []byte
+	Client    admissionregistrationv1typed.MutatingWebhookConfigurationsGetter
 }
 
 func NewAdmissionConfig(o AdmissionConfigOptions) AdmissionConfig {
 	return AdmissionConfig{
+		Client:  o.Client,
 		Config:  admissionConfig(o),
 		Options: o,
 	}
@@ -39,14 +40,9 @@ func (w *AdmissionConfig) Apply(ctx context.Context) error {
 	ctx, span := otel.Tracer(name).Start(ctx, "Apply")
 	defer span.End()
 
-	cl, err := newClient(ctx)
-	if err != nil {
-		return fmt.Errorf("unable to create new client: %w", err)
-	}
+	cl := w.Client.MutatingWebhookConfigurations()
 
-	mcl := cl.AdmissionregistrationV1().MutatingWebhookConfigurations()
-
-	obj, err := mcl.Get(ctx, w.Options.Name, metav1.GetOptions{})
+	obj, err := cl.Get(ctx, w.Options.Name, metav1.GetOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -54,7 +50,7 @@ func (w *AdmissionConfig) Apply(ctx context.Context) error {
 	}
 
 	if apierrors.IsNotFound(err) {
-		if _, err := mcl.Create(ctx, w.Config, metav1.CreateOptions{}); err != nil {
+		if _, err := cl.Create(ctx, w.Config, metav1.CreateOptions{}); err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 			return fmt.Errorf("unable to create admission config: %w", err)
@@ -63,34 +59,13 @@ func (w *AdmissionConfig) Apply(ctx context.Context) error {
 	}
 
 	w.Config.ObjectMeta.ResourceVersion = obj.ObjectMeta.ResourceVersion
-	if _, err := mcl.Update(ctx, w.Config, metav1.UpdateOptions{}); err != nil {
+	if _, err := cl.Update(ctx, w.Config, metav1.UpdateOptions{}); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("unable to update admission config: %w", err)
 	}
 
 	return nil
-}
-
-func newClient(ctx context.Context) (*kubernetes.Clientset, error) {
-	_, span := otel.Tracer(name).Start(ctx, "newClient")
-	defer span.End()
-
-	cfg, err := ctrl.GetConfig()
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return nil, fmt.Errorf("unable to get config: %w", err)
-	}
-
-	cl, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return nil, fmt.Errorf("unable to create a new client: %w", err)
-	}
-
-	return cl, nil
 }
 
 func admissionConfig(o AdmissionConfigOptions) *admissionregistrationv1.MutatingWebhookConfiguration {
