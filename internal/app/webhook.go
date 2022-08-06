@@ -12,19 +12,23 @@ import (
 	"github.com/slok/kubewebhook/v2/pkg/webhook"
 	kwhwebhook "github.com/slok/kubewebhook/v2/pkg/webhook"
 	kwhmutating "github.com/slok/kubewebhook/v2/pkg/webhook/mutating"
+	"go.opentelemetry.io/otel"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type Transformer interface {
-	Transform(string) string
+	Transform(context.Context, string) string
 }
 
 type Webhook struct {
 	Webhook webhook.Webhook
 }
 
-func NewWebhook(t Transformer, r prometheus.Registerer) (*Webhook, error) {
+func NewWebhook(ctx context.Context, t Transformer, r prometheus.Registerer) (*Webhook, error) {
+	_, span := otel.Tracer(name).Start(ctx, "NewWebhook")
+	defer span.End()
+
 	whcfg := kwhmutating.WebhookConfig{
 		ID:      "muting",
 		Obj:     &networkingv1.Ingress{},
@@ -52,13 +56,16 @@ func (w *Webhook) Handler() http.Handler {
 
 func mutatorFunc(t Transformer) func(ctx context.Context, ar *kwhmodel.AdmissionReview, obj metav1.Object) (*kwhmutating.MutatorResult, error) {
 	return func(ctx context.Context, ar *kwhmodel.AdmissionReview, obj metav1.Object) (*kwhmutating.MutatorResult, error) {
+		ctx, span := otel.Tracer(name).Start(ctx, "mutatorFunc")
+		defer span.End()
+
 		ing, ok := obj.(*networkingv1.Ingress)
 		if !ok {
 			return &kwhmutating.MutatorResult{}, nil
 		}
 
 		for idx, rule := range ing.Spec.Rules {
-			rule.Host = t.Transform(rule.Host)
+			rule.Host = t.Transform(ctx, rule.Host)
 			ing.Spec.Rules[idx] = rule
 		}
 

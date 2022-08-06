@@ -1,12 +1,15 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
 	"strings"
 
 	"github.com/mikelorant/muting2/internal/format"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	"gopkg.in/yaml.v3"
 )
 
@@ -19,16 +22,22 @@ type Transform struct {
 	To   string   `yaml:"to"`
 }
 
-func NewTransformer(f string) (*Transforms, error) {
+func NewTransformer(ctx context.Context, f string) (*Transforms, error) {
+	ctx, span := otel.Tracer(name).Start(ctx, "NewTransformer")
+	defer span.End()
+
 	var ts Transforms
-	if err := load(f, &ts); err != nil {
+	if err := load(ctx, f, &ts); err != nil {
 		return nil, fmt.Errorf("unable to load transforms: %w", err)
 	}
 
 	return &ts, nil
 }
 
-func (ts *Transforms) Transform(str string) string {
+func (ts *Transforms) Transform(ctx context.Context, str string) string {
+	_, span := otel.Tracer(name).Start(ctx, "Transform")
+	defer span.End()
+
 	for _, t := range ts.Transforms {
 		for _, suffix := range t.From {
 			if !strings.HasSuffix(str, suffix) {
@@ -54,13 +63,20 @@ func (ts Transforms) String() string {
 	return format.SliceToFormattedLines(ts.Transforms)
 }
 
-func load(f string, v interface{}) error {
+func load(ctx context.Context, f string, v interface{}) error {
+	_, span := otel.Tracer(name).Start(ctx, "load")
+	defer span.End()
+
 	fh, err := os.Open(f)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("unable to read transform file: %v: %w", f, err)
 	}
 
 	if err := yaml.NewDecoder(fh).Decode(v); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("unable to decode transform file: %v: %w", f, err)
 	}
 

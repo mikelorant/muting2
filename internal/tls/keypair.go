@@ -2,6 +2,7 @@ package tls
 
 import (
 	"bytes"
+	"context"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
@@ -31,7 +32,7 @@ type KeypairStore struct {
 	Buffer   *bytes.Buffer
 }
 
-func NewKeypair(o KeypairOptions) (*Keypair, error) {
+func NewKeypair(ctx context.Context, o KeypairOptions) (*Keypair, error) {
 	key, err := rsa.GenerateKey(cryptorand.Reader, 1024)
 	if err != nil {
 		return nil, fmt.Errorf("unable to generate key: %w", err)

@@ -1,6 +1,7 @@
 package tls
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -18,7 +19,7 @@ type PEMStore struct {
 
 var ErrPEMTypeUnknown = errors.New("unknown PEM type")
 
-func (p *PEMs) WriteAll(dir string) error {
+func (p *PEMs) WriteAll(ctx context.Context, dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("unable to create directory: %w", err)
 	}

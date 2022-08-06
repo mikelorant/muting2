@@ -2,6 +2,7 @@ package tls
 
 import (
 	"bytes"
+	"context"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -24,7 +25,7 @@ type CAStore struct {
 	Buffer   *bytes.Buffer
 }
 
-func NewCA() (*CA, error) {
+func NewCA(ctx context.Context) (*CA, error) {
 	key, err := rsa.GenerateKey(cryptorand.Reader, 1024)
 	if err != nil {
 		return nil, fmt.Errorf("unable to generate rsa key: %w", err)

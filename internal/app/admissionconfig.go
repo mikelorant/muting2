@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,22 +35,28 @@ func NewAdmissionConfig(o AdmissionConfigOptions) AdmissionConfig {
 	}
 }
 
-func (w *AdmissionConfig) Apply() error {
-	cl, err := newClient()
+func (w *AdmissionConfig) Apply(ctx context.Context) error {
+	ctx, span := otel.Tracer(name).Start(ctx, "Apply")
+	defer span.End()
+
+	cl, err := newClient(ctx)
 	if err != nil {
 		return fmt.Errorf("unable to create new client: %w", err)
 	}
 
-	ctx := context.TODO()
 	mcl := cl.AdmissionregistrationV1().MutatingWebhookConfigurations()
 
 	obj, err := mcl.Get(ctx, w.Options.Name, metav1.GetOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("unable to get admission config: %w", err)
 	}
 
 	if apierrors.IsNotFound(err) {
 		if _, err := mcl.Create(ctx, w.Config, metav1.CreateOptions{}); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			return fmt.Errorf("unable to create admission config: %w", err)
 		}
 		return nil
@@ -56,20 +64,29 @@ func (w *AdmissionConfig) Apply() error {
 
 	w.Config.ObjectMeta.ResourceVersion = obj.ObjectMeta.ResourceVersion
 	if _, err := mcl.Update(ctx, w.Config, metav1.UpdateOptions{}); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("unable to update admission config: %w", err)
 	}
 
 	return nil
 }
 
-func newClient() (*kubernetes.Clientset, error) {
+func newClient(ctx context.Context) (*kubernetes.Clientset, error) {
+	_, span := otel.Tracer(name).Start(ctx, "newClient")
+	defer span.End()
+
 	cfg, err := ctrl.GetConfig()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("unable to get config: %w", err)
 	}
 
 	cl, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("unable to create a new client: %w", err)
 	}
 

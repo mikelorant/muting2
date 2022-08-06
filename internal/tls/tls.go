@@ -1,6 +1,7 @@
 package tls
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -18,13 +19,13 @@ type Options struct {
 	DNSNames   []string
 }
 
-func NewTLS(o Options) (*TLS, error) {
-	ca, err := NewCA()
+func NewTLS(ctx context.Context, o Options) (*TLS, error) {
+	ca, err := NewCA(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create new CA: %w", err)
 	}
 
-	keypair, err := NewKeypair(KeypairOptions{
+	keypair, err := NewKeypair(ctx, KeypairOptions{
 		CA:         ca,
 		CommonName: o.CommonName,
 		DNSNames:   o.DNSNames,

@@ -1,9 +1,14 @@
 package app
 
 import (
+	"context"
 	cryptotls "crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -11,6 +16,10 @@ import (
 	"github.com/mikelorant/muting2/internal/tls"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	"golang.org/x/sync/errgroup"
 )
 
 type Handler interface {
@@ -33,12 +42,15 @@ type ServerOptions struct {
 	Metrics Metrics
 }
 
-func NewServer(o ServerOptions) error {
+func NewServer(ctx context.Context, o ServerOptions) error {
+	ctx, span := otel.Tracer(name).Start(ctx, "NewServer")
+	defer span.End()
+
 	s := Server{
 		Options: o,
 	}
 
-	s.StartWithTLSKeypair(
+	s.StartWithTLSKeypair(ctx,
 		s.Options.Keypair.GetCertificate(),
 		s.Options.Keypair.GetKey(),
 	)
@@ -46,7 +58,10 @@ func NewServer(o ServerOptions) error {
 	return nil
 }
 
-func (s *Server) StartWithTLSKeypair(cert, key []byte) error {
+func (s *Server) StartWithTLSKeypair(ctx context.Context, cert, key []byte) error {
+	ctx, span := otel.Tracer(name).Start(ctx, "StartWithTLSKeypair")
+	defer span.End()
+
 	keypair, err := cryptotls.X509KeyPair(cert, key)
 	if err != nil {
 		return fmt.Errorf("unable to assemble keypair: %w", err)
@@ -56,20 +71,48 @@ func (s *Server) StartWithTLSKeypair(cert, key []byte) error {
 	srv := &http.Server{
 		Addr:         s.Options.Addr,
 		TLSConfig:    tlscfg,
-		Handler:      getRouter(s.Options.Webhook, s.Options.Metrics),
+		Handler:      getRouter(ctx, s.Options.Webhook, s.Options.Metrics),
 		ReadTimeout:  time.Minute,
 		WriteTimeout: time.Minute,
 	}
 
-	if err := srv.ListenAndServeTLS("", ""); err != nil {
-		return fmt.Errorf("unable to start server: %w", err)
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	g := new(errgroup.Group)
+
+	g.Go(func() error {
+		_, span := otel.Tracer(name).Start(ctx, "ListenAndServeTLS")
+		defer span.End()
+
+		if err := srv.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+			return fmt.Errorf("unable to listen and serve: %w", err)
+		}
+
+		return nil
+	})
+
+	<-done
+
+	if err := srv.Shutdown(ctx); err != nil {
+		return fmt.Errorf("unable to shutdown server: %w", err)
+	}
+
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("go routine error: %w", err)
 	}
 
 	return nil
 }
 
-func getRouter(h Handler, m Metrics) *chi.Mux {
+func getRouter(ctx context.Context, h Handler, m Metrics) *chi.Mux {
+	_, span := otel.Tracer(name).Start(ctx, "getRouter")
+	defer span.End()
+
 	wh := h.Handler()
+	oh := otelhttp.NewHandler(wh, "Handler")
 	ph := promhttp.InstrumentMetricHandler(m, promhttp.HandlerFor(m, promhttp.HandlerOpts{}))
 
 	r := chi.NewRouter()
@@ -77,7 +120,7 @@ func getRouter(h Handler, m Metrics) *chi.Mux {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Heartbeat("/status"))
 	r.Mount("/debug", middleware.Profiler())
-	r.Handle("/", wh)
+	r.Handle("/", oh)
 	r.Handle("/metrics", ph)
 
 	return r
