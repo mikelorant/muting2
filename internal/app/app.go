@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/common-nighthawk/go-figure"
+	"github.com/hackebrot/turtle"
 	"github.com/mikelorant/muting2/internal/tls"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -64,7 +65,7 @@ func (a *App) GetTransformer() error {
 	}
 	a.Transforms = t
 
-	fmt.Println("Transforms:")
+	fmt.Println(turtle.Emojis["scissors"], " Transforms:")
 	fmt.Println(t)
 	fmt.Println()
 
@@ -89,7 +90,7 @@ func (a *App) GetTLS() error {
 
 	a.TLS = t
 
-	fmt.Println("TLS Options:")
+	fmt.Println(turtle.Emojis["lock"], "TLS Options:")
 	fmt.Println(t.Options)
 	fmt.Println()
 
@@ -104,7 +105,7 @@ func (a *App) ApplyAdmissionConfig() error {
 		CABundle:  a.TLS.CA.GetCertificate(),
 	})
 
-	fmt.Println("Admission Config Options:")
+	fmt.Println(turtle.Emojis["vertical_traffic_light"], "Admission Config Options:")
 	fmt.Println(ac.Options)
 	fmt.Println()
 
@@ -112,7 +113,7 @@ func (a *App) ApplyAdmissionConfig() error {
 		return fmt.Errorf("unable to apply webhook: %w", err)
 	}
 
-	a.Log.Println("Applied admission config.")
+	a.Log.Println(turtle.Emojis["art"], "Applied admission config.")
 
 	return nil
 }
@@ -130,7 +131,7 @@ func (a *App) StartServer() error {
 		Keypair: a.TLS.Keypair,
 	}
 
-	a.Log.Printf("Starting server [%v].\n", a.Options.Bind)
+	a.Log.Printf("%v Starting server [%v].\n", turtle.Emojis["white_check_mark"], a.Options.Bind)
 
 	if err := NewServer(opts); err != nil {
 		return fmt.Errorf("unable to start server: %w", err)

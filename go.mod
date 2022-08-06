@@ -5,6 +5,7 @@ go 1.18
 require (
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
 	github.com/go-chi/chi/v5 v5.0.7
+	github.com/hackebrot/turtle v0.2.0
 	github.com/ivanpirog/coloredcobra v1.0.1
 	github.com/prometheus/client_golang v1.12.2
 	github.com/slok/kubewebhook/v2 v2.3.0
