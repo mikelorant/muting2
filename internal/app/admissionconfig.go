@@ -11,7 +11,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	admissionregistrationv1typed "k8s.io/client-go/kubernetes/typed/admissionregistration/v1"
-	utilpointer "k8s.io/utils/pointer"
 )
 
 type AdmissionConfig struct {
@@ -24,11 +23,12 @@ type AdmissionConfigOptions struct {
 	Namespace string
 	Name      string
 	Service   string
+	URL       string
 	CABundle  []byte
 	Client    admissionregistrationv1typed.MutatingWebhookConfigurationsGetter
 }
 
-func NewAdmissionConfig(o AdmissionConfigOptions) AdmissionConfig {
+func newAdmissionConfig(o AdmissionConfigOptions) AdmissionConfig {
 	return AdmissionConfig{
 		Client:  o.Client,
 		Config:  admissionConfig(o),
@@ -36,7 +36,7 @@ func NewAdmissionConfig(o AdmissionConfigOptions) AdmissionConfig {
 	}
 }
 
-func (w *AdmissionConfig) Apply(ctx context.Context) error {
+func (w *AdmissionConfig) apply(ctx context.Context) error {
 	ctx, span := otel.Tracer(name).Start(ctx, "Apply")
 	defer span.End()
 
@@ -73,19 +73,21 @@ func admissionConfig(o AdmissionConfigOptions) *admissionregistrationv1.Mutating
 	fail := admissionregistrationv1.Fail
 	sideEffect := admissionregistrationv1.SideEffectClassNone
 
-	service := &admissionregistrationv1.ServiceReference{
-		Name:      o.Name,
-		Namespace: o.Namespace,
-		Path:      utilpointer.String("/mutate"),
-	}
-
 	objectMeta := metav1.ObjectMeta{
 		Name: o.Name,
 	}
 
 	clientConfig := admissionregistrationv1.WebhookClientConfig{
 		CABundle: o.CABundle,
-		Service:  service,
+	}
+
+	if o.URL != "" {
+		clientConfig.URL = &o.URL
+	} else {
+		clientConfig.Service = &admissionregistrationv1.ServiceReference{
+			Name:      o.Name,
+			Namespace: o.Namespace,
+		}
 	}
 
 	operations := []admissionregistrationv1.OperationType{

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Config
+clusters:
+- name: localhost
+  cluster:
+    server: http://host.docker.internal:8001
+contexts:
+- name: localhost
+  context:
+    cluster: localhost
+current-context: localhost

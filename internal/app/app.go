@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
+	"strings"
 
 	"github.com/common-nighthawk/go-figure"
 	"github.com/hackebrot/turtle"
@@ -29,9 +31,9 @@ type App struct {
 type Options struct {
 	Bind      string
 	Debug     bool
-	Config    string
-	Namespace string
+	Host      string
 	Name      string
+	Namespace string
 	Service   string
 }
 
@@ -52,12 +54,12 @@ func New(o Options) error {
 
 	ctx := context.Background()
 
-	if err := a.ConfigureObservability(ctx); err != nil {
+	if err := a.configureObservability(ctx); err != nil {
 		return fmt.Errorf("unable to configure observability: %w", err)
 	}
 	defer a.Observability.TracerProvider.Shutdown(ctx)
 
-	if err := a.GetTLS(ctx); err != nil {
+	if err := a.getTLS(ctx); err != nil {
 		return fmt.Errorf("unable to do TLS: %w", err)
 	}
 
@@ -67,22 +69,22 @@ func New(o Options) error {
 	}
 	a.Client = cl
 
-	if err := a.GetTransformer(ctx); err != nil {
+	if err := a.getTransformer(ctx); err != nil {
 		return fmt.Errorf("unable to do transformer: %w", err)
 	}
 
-	if err := a.ApplyAdmissionConfig(ctx); err != nil {
+	if err := a.applyAdmissionConfig(ctx); err != nil {
 		return fmt.Errorf("unable to do webhook: %w", err)
 	}
 
-	if err := a.StartServer(ctx); err != nil {
+	if err := a.startServer(ctx); err != nil {
 		return fmt.Errorf("unable to do server: %w", err)
 	}
 
 	return nil
 }
 
-func (a *App) ConfigureObservability(ctx context.Context) error {
+func (a *App) configureObservability(ctx context.Context) error {
 	o := ObservabilityOptions{
 		Debug:             a.Options.Debug,
 		TracerServiceName: tracerServiceName,
@@ -90,7 +92,7 @@ func (a *App) ConfigureObservability(ctx context.Context) error {
 		ProfilerAddr:      profilerAddr,
 	}
 
-	obs, err := NewObservability(ctx, o)
+	obs, err := newObservability(ctx, o)
 	if err != nil {
 		return fmt.Errorf("unable to setup observability: %w", err)
 	}
@@ -100,11 +102,11 @@ func (a *App) ConfigureObservability(ctx context.Context) error {
 	return nil
 }
 
-func (a *App) GetTransformer(ctx context.Context) error {
+func (a *App) getTransformer(ctx context.Context) error {
 	ctx, span := otel.Tracer(name).Start(ctx, "GetTransformer")
 	defer span.End()
 
-	t, err := NewTransformer(TransformOptions{
+	t, err := newTransformer(TransformOptions{
 		Namespace: a.Options.Namespace,
 		Name:      a.Options.Name,
 		Client:    a.Client.CoreV1(),
@@ -114,7 +116,7 @@ func (a *App) GetTransformer(ctx context.Context) error {
 	}
 	a.Transforms = t
 
-	ts, err := t.Read(ctx)
+	ts, err := t.read(ctx)
 	if err != nil {
 		return fmt.Errorf("unable to read transforms: %w", err)
 	}
@@ -128,14 +130,8 @@ func (a *App) GetTransformer(ctx context.Context) error {
 	return nil
 }
 
-func (a *App) GetTLS(ctx context.Context) error {
-	cn := fmt.Sprintf("%v.%v.svc", a.Options.Service, a.Options.Namespace)
-	dn := []string{
-		a.Options.Service,
-		fmt.Sprintf("%v.%v", a.Options.Service, a.Options.Namespace),
-		fmt.Sprintf("%v.%v.svc", a.Options.Service, a.Options.Namespace),
-	}
-
+func (a *App) getTLS(ctx context.Context) error {
+	cn, dn := a.buildTLSOptions()
 	t, err := tls.NewTLS(ctx, tls.Options{
 		CommonName: cn,
 		DNSNames:   dn,
@@ -153,15 +149,16 @@ func (a *App) GetTLS(ctx context.Context) error {
 	return nil
 }
 
-func (a *App) ApplyAdmissionConfig(ctx context.Context) error {
+func (a *App) applyAdmissionConfig(ctx context.Context) error {
 	ctx, span := otel.Tracer(name).Start(ctx, "ApplyAdmissionConfig")
 	defer span.End()
 
-	ac := NewAdmissionConfig(AdmissionConfigOptions{
+	ac := newAdmissionConfig(AdmissionConfigOptions{
 		Client:    a.Client.AdmissionregistrationV1(),
 		Name:      a.Options.Name,
 		Namespace: a.Options.Namespace,
 		Service:   a.Options.Service,
+		URL:       a.buildAdmissionConfigURL(),
 		CABundle:  a.TLS.CA.GetCertificate(),
 	})
 
@@ -169,7 +166,7 @@ func (a *App) ApplyAdmissionConfig(ctx context.Context) error {
 	fmt.Println(ac.Options)
 	fmt.Println()
 
-	if err := ac.Apply(ctx); err != nil {
+	if err := ac.apply(ctx); err != nil {
 		return fmt.Errorf("unable to apply webhook: %w", err)
 	}
 
@@ -178,8 +175,8 @@ func (a *App) ApplyAdmissionConfig(ctx context.Context) error {
 	return nil
 }
 
-func (a *App) StartServer(ctx context.Context) error {
-	wh, err := NewWebhook(ctx, a.Transforms, a.Observability.Registry)
+func (a *App) startServer(ctx context.Context) error {
+	wh, err := newWebhook(ctx, a.Transforms, a.Observability.Registry)
 	if err != nil {
 		return fmt.Errorf("unable to get handler: %w", err)
 	}
@@ -193,7 +190,7 @@ func (a *App) StartServer(ctx context.Context) error {
 
 	a.Log.Printf("%v Starting server [%v].\n", turtle.Emojis["white_check_mark"], a.Options.Bind)
 
-	if err := NewServer(ctx, opts); err != nil {
+	if err := newServer(ctx, opts); err != nil {
 		return fmt.Errorf("unable to start server: %w", err)
 	}
 
@@ -219,4 +216,34 @@ func newClient(ctx context.Context) (*kubernetes.Clientset, error) {
 	}
 
 	return cl, nil
+}
+
+func (a *App) buildTLSOptions() (cn string, dn []string) {
+	if a.Options.Host != "" {
+		return a.Options.Host, []string{a.Options.Host}
+	}
+
+	return fmt.Sprintf("%v.%v.svc", a.Options.Service, a.Options.Namespace), []string{
+		a.Options.Service,
+		fmt.Sprintf("%v.%v", a.Options.Service, a.Options.Namespace),
+		fmt.Sprintf("%v.%v.svc", a.Options.Service, a.Options.Namespace),
+	}
+}
+
+func (a *App) buildAdmissionConfigURL() string {
+	if a.Options.Host == "" {
+		return ""
+	}
+
+	url := url.URL{
+		Scheme: "https",
+		Host:   a.Options.Host,
+	}
+
+	_, port, _ := strings.Cut(a.Options.Bind, ":")
+	if port != "" {
+		url.Host = fmt.Sprintf("%v:%v", url.Host, port)
+	}
+
+	return url.String()
 }

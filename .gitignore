@@ -8,6 +8,8 @@
 *
 
 !/test/*
+!/hack/*
+!/example/*
 
 !/.gitignore
 !/.golangci.yaml
@@ -15,6 +17,7 @@
 !*.go
 !go.sum
 !go.mod
-!transform.yaml
+!Dockerfile
+!docker-compose.yml
 
 !*/

@@ -25,7 +25,7 @@ type Webhook struct {
 	Webhook webhook.Webhook
 }
 
-func NewWebhook(ctx context.Context, t Transformer, r prometheus.Registerer) (*Webhook, error) {
+func newWebhook(ctx context.Context, t Transformer, r prometheus.Registerer) (*Webhook, error) {
 	whcfg := kwhmutating.WebhookConfig{
 		ID:      "muting",
 		Obj:     &networkingv1.Ingress{},

@@ -1,0 +1,9 @@
+services:
+  app:
+    build: .
+    command:
+      - --host=host.docker.internal
+    ports:
+      - 8443:8443
+    volumes:
+      - ./hack/config:/.kube/config

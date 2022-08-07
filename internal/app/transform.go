@@ -30,7 +30,7 @@ type TransformOptions struct {
 	Client    corev1.ConfigMapsGetter
 }
 
-func NewTransformer(o TransformOptions) (*Transforms, error) {
+func newTransformer(o TransformOptions) (*Transforms, error) {
 	ts := Transforms{
 		Options: o,
 		Client:  o.Client,
@@ -43,7 +43,7 @@ func (ts *Transforms) Transform(ctx context.Context, str string) (string, error)
 	ctx, span := otel.Tracer(name).Start(ctx, "Transform")
 	defer span.End()
 
-	tt, err := ts.Read(ctx)
+	tt, err := ts.read(ctx)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -71,7 +71,7 @@ func (t Transform) String() string {
 	return fmt.Sprintf("%v => %v", strings.Join(t.From, ", "), t.To)
 }
 
-func (ts *Transforms) Read(ctx context.Context) ([]Transform, error) {
+func (ts *Transforms) read(ctx context.Context) ([]Transform, error) {
 	ctx, span := otel.Tracer(name).Start(ctx, "read")
 	defer span.End()
 

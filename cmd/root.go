@@ -14,6 +14,7 @@ func NewRootCmd() *cobra.Command {
 	var (
 		bind      string
 		debug     bool
+		host      string
 		name      string
 		namespace string
 		service   string
@@ -26,6 +27,7 @@ func NewRootCmd() *cobra.Command {
 			opts := app.Options{
 				Bind:      bind,
 				Debug:     debug,
+				Host:      host,
 				Name:      name,
 				Namespace: namespace,
 				Service:   service,
@@ -39,11 +41,12 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&bind, "bind", "b", ":8443", "Address to bind")
 	cmd.Flags().BoolVarP(&debug, "debug", "d", false, "Debug")
-	cmd.Flags().StringVarP(&name, "name", "r", "muting", "Resource name")
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Resource namespace")
-	cmd.Flags().StringVarP(&service, "service", "s", "muting", "Resource service")
+	cmd.Flags().StringVarP(&bind, "bind", "", ":8443", "Address to bind")
+	cmd.Flags().StringVarP(&host, "host", "", "", "Host endpoint name")
+	cmd.Flags().StringVarP(&name, "name", "", "muting", "Resource name")
+	cmd.Flags().StringVarP(&namespace, "namespace", "", "default", "Resource namespace")
+	cmd.Flags().StringVarP(&service, "service", "", "muting", "Resource service")
 
 	cc.Init(&cc.Config{
 		RootCmd:         cmd,

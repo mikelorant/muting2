@@ -42,8 +42,11 @@ func NewTLS(ctx context.Context, o Options) (*TLS, error) {
 }
 
 func (o Options) String() string {
-	var sb strings.Builder
-	fmt.Fprintln(&sb, "Common Name:", o.CommonName)
-	fmt.Fprint(&sb, format.SliceToFormattedLinesWithPrefix(o.DNSNames, "DNS Name:"))
-	return sb.String()
+	var strs []string
+	strs = append(strs, fmt.Sprintf("Common Name: %v", o.CommonName))
+	if str := format.SliceToFormattedLinesWithPrefix(o.DNSNames, "DNS Name:"); str != "" {
+		strs = append(strs, str)
+	}
+
+	return strings.Join(strs, "\n")
 }

@@ -40,12 +40,12 @@ type ServerOptions struct {
 	Metrics Metrics
 }
 
-func NewServer(ctx context.Context, o ServerOptions) error {
+func newServer(ctx context.Context, o ServerOptions) error {
 	s := Server{
 		Options: o,
 	}
 
-	s.StartWithTLSKeypair(ctx,
+	s.startWithTLSKeypair(ctx,
 		s.Options.Keypair.GetCertificate(),
 		s.Options.Keypair.GetKey(),
 	)
@@ -53,7 +53,7 @@ func NewServer(ctx context.Context, o ServerOptions) error {
 	return nil
 }
 
-func (s *Server) StartWithTLSKeypair(ctx context.Context, cert, key []byte) error {
+func (s *Server) startWithTLSKeypair(ctx context.Context, cert, key []byte) error {
 	keypair, err := cryptotls.X509KeyPair(cert, key)
 	if err != nil {
 		return fmt.Errorf("unable to assemble keypair: %w", err)

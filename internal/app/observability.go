@@ -28,7 +28,7 @@ type ObservabilityOptions struct {
 	ProfilerAddr      string
 }
 
-func NewObservability(ctx context.Context, o ObservabilityOptions) (Observability, error) {
+func newObservability(ctx context.Context, o ObservabilityOptions) (Observability, error) {
 	obs := Observability{
 		Options:  o,
 		Registry: prometheus.NewRegistry(),
