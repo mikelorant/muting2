@@ -13,6 +13,7 @@ import (
 func NewRootCmd() *cobra.Command {
 	var (
 		bind      string
+		debug     bool
 		name      string
 		namespace string
 		service   string
@@ -24,6 +25,7 @@ func NewRootCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := app.Options{
 				Bind:      bind,
+				Debug:     debug,
 				Name:      name,
 				Namespace: namespace,
 				Service:   service,
@@ -38,6 +40,7 @@ func NewRootCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&bind, "bind", "b", ":8443", "Address to bind")
+	cmd.Flags().BoolVarP(&debug, "debug", "d", false, "Debug")
 	cmd.Flags().StringVarP(&name, "name", "r", "muting", "Resource name")
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Resource namespace")
 	cmd.Flags().StringVarP(&service, "service", "s", "muting", "Resource service")

@@ -17,8 +17,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/codes"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -43,9 +41,6 @@ type ServerOptions struct {
 }
 
 func NewServer(ctx context.Context, o ServerOptions) error {
-	ctx, span := otel.Tracer(name).Start(ctx, "NewServer")
-	defer span.End()
-
 	s := Server{
 		Options: o,
 	}
@@ -59,9 +54,6 @@ func NewServer(ctx context.Context, o ServerOptions) error {
 }
 
 func (s *Server) StartWithTLSKeypair(ctx context.Context, cert, key []byte) error {
-	ctx, span := otel.Tracer(name).Start(ctx, "StartWithTLSKeypair")
-	defer span.End()
-
 	keypair, err := cryptotls.X509KeyPair(cert, key)
 	if err != nil {
 		return fmt.Errorf("unable to assemble keypair: %w", err)
@@ -82,12 +74,7 @@ func (s *Server) StartWithTLSKeypair(ctx context.Context, cert, key []byte) erro
 	g := new(errgroup.Group)
 
 	g.Go(func() error {
-		_, span := otel.Tracer(name).Start(ctx, "ListenAndServeTLS")
-		defer span.End()
-
 		if err := srv.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
 			return fmt.Errorf("unable to listen and serve: %w", err)
 		}
 
@@ -108,9 +95,6 @@ func (s *Server) StartWithTLSKeypair(ctx context.Context, cert, key []byte) erro
 }
 
 func getRouter(ctx context.Context, h Handler, m Metrics) *chi.Mux {
-	_, span := otel.Tracer(name).Start(ctx, "getRouter")
-	defer span.End()
-
 	wh := h.Handler()
 	oh := otelhttp.NewHandler(wh, "Handler")
 	ph := promhttp.InstrumentMetricHandler(m, promhttp.HandlerFor(m, promhttp.HandlerOpts{}))

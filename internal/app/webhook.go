@@ -26,9 +26,6 @@ type Webhook struct {
 }
 
 func NewWebhook(ctx context.Context, t Transformer, r prometheus.Registerer) (*Webhook, error) {
-	_, span := otel.Tracer(name).Start(ctx, "NewWebhook")
-	defer span.End()
-
 	whcfg := kwhmutating.WebhookConfig{
 		ID:      "muting",
 		Obj:     &networkingv1.Ingress{},

@@ -10,27 +10,25 @@ import (
 	"github.com/hackebrot/turtle"
 	"github.com/mikelorant/muting2/internal/format"
 	"github.com/mikelorant/muting2/internal/tls"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/sdk/trace"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 type App struct {
-	Options         Options
-	Transforms      *Transforms
-	TLS             *tls.TLS
-	Registry        *prometheus.Registry
-	Log             *log.Logger
-	TracingProvider *trace.TracerProvider
-	Client          *kubernetes.Clientset
+	Options       Options
+	Transforms    *Transforms
+	TLS           *tls.TLS
+	Observability Observability
+	Log           *log.Logger
+	Client        *kubernetes.Clientset
 }
 
 type Options struct {
 	Bind      string
+	Debug     bool
 	Config    string
 	Namespace string
 	Name      string
@@ -38,30 +36,26 @@ type Options struct {
 }
 
 const (
-	name        = "github.com/mikelorant/muting2"
-	serviceName = "muting"
+	name              = "github.com/mikelorant/muting2"
+	tracerServiceName = "muting"
+	profilerName      = "muting.app"
+	profilerAddr      = "http://localhost:4040"
 )
 
 func New(o Options) error {
 	a := App{
-		Options:  o,
-		Registry: prometheus.NewRegistry(),
-		Log:      log.New(os.Stdout, "", 0),
+		Options: o,
+		Log:     log.New(os.Stdout, "", 0),
 	}
 
 	figure.NewFigure("Muting", "", true).Print()
 
-	a.RegisterCollectors()
-
 	ctx := context.Background()
 
-	if err := a.ConfigureTracing(ctx); err != nil {
-		return fmt.Errorf("unable to configure tracing: %w", err)
+	if err := a.ConfigureObservability(ctx); err != nil {
+		return fmt.Errorf("unable to configure observability: %w", err)
 	}
-	defer a.TracingProvider.Shutdown(ctx)
-
-	ctx, span := otel.Tracer(name).Start(ctx, "New")
-	defer span.End()
+	defer a.Observability.TracerProvider.Shutdown(ctx)
 
 	if err := a.GetTLS(ctx); err != nil {
 		return fmt.Errorf("unable to do TLS: %w", err)
@@ -88,17 +82,20 @@ func New(o Options) error {
 	return nil
 }
 
-func (a *App) ConfigureTracing(ctx context.Context) error {
-	to := TracingOptions{
-		ServiceName: serviceName,
+func (a *App) ConfigureObservability(ctx context.Context) error {
+	o := ObservabilityOptions{
+		Debug:             a.Options.Debug,
+		TracerServiceName: tracerServiceName,
+		ProfilerName:      profilerName,
+		ProfilerAddr:      profilerAddr,
 	}
 
-	tp, err := NewTracingProvider(ctx, to)
+	obs, err := NewObservability(ctx, o)
 	if err != nil {
-		return fmt.Errorf("unable to create new tracing provider: %w", err)
+		return fmt.Errorf("unable to setup observability: %w", err)
 	}
 
-	a.TracingProvider = tp
+	a.Observability = obs
 
 	return nil
 }
@@ -132,9 +129,6 @@ func (a *App) GetTransformer(ctx context.Context) error {
 }
 
 func (a *App) GetTLS(ctx context.Context) error {
-	ctx, span := otel.Tracer(name).Start(ctx, "GetTLS")
-	defer span.End()
-
 	cn := fmt.Sprintf("%v.%v.svc", a.Options.Service, a.Options.Namespace)
 	dn := []string{
 		a.Options.Service,
@@ -185,10 +179,7 @@ func (a *App) ApplyAdmissionConfig(ctx context.Context) error {
 }
 
 func (a *App) StartServer(ctx context.Context) error {
-	ctx, span := otel.Tracer(name).Start(ctx, "StartServer")
-	defer span.End()
-
-	wh, err := NewWebhook(ctx, a.Transforms, a.Registry)
+	wh, err := NewWebhook(ctx, a.Transforms, a.Observability.Registry)
 	if err != nil {
 		return fmt.Errorf("unable to get handler: %w", err)
 	}
@@ -196,7 +187,7 @@ func (a *App) StartServer(ctx context.Context) error {
 	opts := ServerOptions{
 		Addr:    a.Options.Bind,
 		Webhook: wh,
-		Metrics: a.Registry,
+		Metrics: a.Observability.Registry,
 		Keypair: a.TLS.Keypair,
 	}
 
@@ -207,11 +198,6 @@ func (a *App) StartServer(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func (a *App) RegisterCollectors() {
-	a.Registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
-	a.Registry.MustRegister(collectors.NewGoCollector())
 }
 
 func newClient(ctx context.Context) (*kubernetes.Clientset, error) {
